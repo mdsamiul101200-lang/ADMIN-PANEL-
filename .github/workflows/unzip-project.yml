@@ -1,0 +1,222 @@
+name: ZIP Extractor
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  unzip:
+    name: Extract ZIP to Repository
+    runs-on: ubuntu-latest
+
+    steps:
+
+      # ==========================================
+      # STEP 1 — Checkout Repository
+      # ==========================================
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+
+      # ==========================================
+      # STEP 2 — Find ZIP File
+      # ==========================================
+      - name: Find ZIP File
+        shell: bash
+        run: |
+
+          echo "Searching for ZIP file..."
+
+          ZIP_FILE=$(find . \
+            -maxdepth 1 \
+            -type f \
+            -iname "*.zip" \
+            | head -n 1)
+
+          if [ -z "$ZIP_FILE" ]; then
+            echo "ERROR: No ZIP file found in repository root."
+            exit 1
+          fi
+
+          echo "ZIP FILE FOUND:"
+          echo "$ZIP_FILE"
+
+          echo "ZIP_FILE=$ZIP_FILE" >> "$GITHUB_ENV"
+
+
+      # ==========================================
+      # STEP 3 — Prepare Extraction Folder
+      # ==========================================
+      - name: Prepare Extraction Folder
+        shell: bash
+        run: |
+
+          echo "Preparing extraction directory..."
+
+          rm -rf .github_extract
+
+          mkdir -p .github_extract
+
+
+      # ==========================================
+      # STEP 4 — Extract ZIP
+      # ==========================================
+      - name: Extract ZIP
+        shell: bash
+        run: |
+
+          echo "Extracting ZIP..."
+
+          unzip -o "$ZIP_FILE" \
+            -d .github_extract
+
+          echo "ZIP extraction completed."
+
+
+      # ==========================================
+      # STEP 5 — Detect Project Root
+      # ==========================================
+      - name: Detect Project Root
+        shell: bash
+        run: |
+
+          shopt -s dotglob nullglob
+
+          ITEMS=(.github_extract/*)
+
+          if [ "${#ITEMS[@]}" -eq 1 ] && [ -d "${ITEMS[0]}" ]; then
+
+            echo "Single project folder detected."
+
+            PROJECT_ROOT="${ITEMS[0]}"
+
+          else
+
+            echo "Project files are directly inside ZIP."
+
+            PROJECT_ROOT=".github_extract"
+
+          fi
+
+          echo "PROJECT_ROOT=$PROJECT_ROOT" >> "$GITHUB_ENV"
+
+          echo "Project root:"
+          echo "$PROJECT_ROOT"
+
+
+      # ==========================================
+      # STEP 6 — Copy Project Files
+      # ==========================================
+      - name: Copy Project Files
+        shell: bash
+        run: |
+
+          echo "Copying project files..."
+
+          shopt -s dotglob nullglob
+
+          cp -a "$PROJECT_ROOT"/. .
+
+          echo "Project files copied successfully."
+
+
+      # ==========================================
+      # STEP 7 — Remove Temporary Files
+      # ==========================================
+      - name: Cleanup
+        shell: bash
+        run: |
+
+          echo "Cleaning temporary files..."
+
+          rm -rf .github_extract
+
+          rm -f "$ZIP_FILE"
+
+          echo "Cleanup completed."
+
+
+      # ==========================================
+      # STEP 8 — Verify Project
+      # ==========================================
+      - name: Verify Extracted Project
+        shell: bash
+        run: |
+
+          echo ""
+          echo "=========================================="
+          echo "FINAL PROJECT STRUCTURE"
+          echo "=========================================="
+
+          find . \
+            -maxdepth 5 \
+            -type f \
+            ! -path "./.git/*" \
+            | sort
+
+          echo ""
+          echo "=========================================="
+          echo "ZIP EXTRACTION SUCCESSFUL"
+          echo "=========================================="
+
+
+      # ==========================================
+      # STEP 9 — Configure Git
+      # ==========================================
+      - name: Configure Git
+        shell: bash
+        run: |
+
+          git config user.name \
+            "github-actions[bot]"
+
+          git config user.email \
+            "41898282+github-actions[bot]@users.noreply.github.com"
+
+
+      # ==========================================
+      # STEP 10 — Add Extracted Files
+      # ==========================================
+      - name: Add Extracted Files
+        shell: bash
+        run: |
+
+          git add -A
+
+
+      # ==========================================
+      # STEP 11 — Commit Changes
+      # ==========================================
+      - name: Commit Changes
+        shell: bash
+        run: |
+
+          if git diff --cached --quiet; then
+
+            echo "No changes detected."
+
+          else
+
+            git commit \
+              -m "Extract complete project ZIP"
+
+          fi
+
+
+      # ==========================================
+      # STEP 12 — Push Changes
+      # ==========================================
+      - name: Push Changes
+        shell: bash
+        run: |
+
+          git push
+
+          echo ""
+          echo "=========================================="
+          echo "PROJECT SUCCESSFULLY EXTRACTED"
+          echo "=========================================="
